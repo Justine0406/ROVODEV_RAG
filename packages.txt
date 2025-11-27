@@ -1,2 +1,2 @@
-﻿libmupdf-dev
+﻿mupdf
 mupdf-tools
