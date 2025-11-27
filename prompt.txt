@@ -1,0 +1,700 @@
+# Thesis Panelist AI - Phase 1 MVP Build Specification
+
+## Project Context
+Build a **zero-cost validation MVP** for a Thesis Review RAG system. This is Phase 1 - focus on proving the concept works and collecting user interest. No authentication, no payments, no persistence. Just a working demo that shows value.
+
+## Success Criteria
+- Users can upload a PDF thesis/research paper
+- System provides intelligent critique like a real thesis panelist
+- Annotations highlight problematic sections
+- Users can preview annotated PDF in browser
+- Email capture for waitlist signups
+- Entire system runs on free infrastructure
+- Deploy-ready for Streamlit Community Cloud
+
+## Tech Stack (All Free)
+```
+Frontend: Streamlit
+LLM: Groq API (free tier - llama-3.3-70b-versatile)
+Embeddings: sentence-transformers (all-MiniLM-L6-v2)
+Vector Store: ChromaDB (in-memory, no persistence)
+PDF Processing: PyMuPDF (fitz)
+Storage: Streamlit session_state only
+Deployment: Streamlit Community Cloud
+```
+
+## Critical Constraints - READ CAREFULLY
+1. **NO DATABASE** - Everything in session_state, resets on page refresh
+2. **NO USER AUTH** - Public access, track usage via session_state only
+3. **NO PAYMENT INTEGRATION** - Just collect emails for future launch
+4. **NO FILE STORAGE** - PDFs processed in memory, not saved
+5. **IN-MEMORY VECTORS** - ChromaDB collection resets per session
+6. **GROQ FREE TIER** - Respect rate limits, add error handling
+7. **SINGLE PDF FOCUS** - One document at a time (for MVP simplicity)
+
+## Application Flow
+
+### User Journey
+1. Land on homepage with clear value proposition
+2. See example critique screenshots (hardcoded images/text)
+3. Upload PDF (max 10MB, under 50 pages for speed)
+4. App extracts text and chunks it
+5. User enters a question OR selects critique mode:
+   - "Full Panelist Review" (comprehensive)
+   - "Methodology Check" (research design)
+   - "Writing Quality" (grammar, clarity)
+6. System retrieves relevant chunks via RAG
+7. Groq generates critique with citations
+8. PDF displayed with basic highlights on problematic sections
+9. Download annotated PDF button
+10. CTA: "Want unlimited reviews? Join waitlist!" → Email capture
+
+### Technical Flow
+```
+PDF Upload
+  ↓
+Extract text with PyMuPDF (preserve page numbers)
+  ↓
+Chunk text (500 chars, 100 overlap)
+  ↓
+Generate embeddings (sentence-transformers)
+  ↓
+Store in ChromaDB (in-memory)
+  ↓
+User query/mode selection
+  ↓
+Embed query → Retrieve top 5 chunks
+  ↓
+Construct prompt with context
+  ↓
+Groq API call with streaming
+  ↓
+Parse response for issues/suggestions
+  ↓
+Map issues to PDF pages (basic highlighting)
+  ↓
+Generate annotated PDF
+  ↓
+Display in browser + download
+```
+
+## File Structure
+```
+thesis-panelist-mvp/
+├── app.py                          # Main Streamlit app
+├── requirements.txt                # Dependencies
+├── README.md                       # Setup instructions
+├── .streamlit/
+│   └── config.toml                # Streamlit config
+├── utils/
+│   ├── pdf_processor.py           # PDF text extraction + chunking
+│   ├── embeddings.py              # Embedding generation
+│   ├── vector_store.py            # ChromaDB operations
+│   ├── groq_client.py             # Groq API calls
+│   ├── annotator.py               # PDF annotation with PyMuPDF
+│   └── prompts.py                 # Prompt templates
+└── assets/
+    └── demo_screenshot.png        # Example output for landing page
+```
+
+## Core Features - Detailed Specs
+
+### 1. Landing Page (app.py)
+```python
+# Header section
+- Title: "Thesis Panelist AI - Get Expert Feedback in Minutes"
+- Subtitle: "AI-powered thesis review that catches errors before your panelist does"
+- Value props (3 bullet points):
+  • Instant critique like a real thesis committee member
+  • Visual annotations showing exactly what to fix
+  • Free demo - no signup required
+
+# Demo showcase
+- Show example annotated PDF screenshot
+- Display sample critique output
+- "Try it now - upload your thesis" CTA
+
+# Email waitlist section (bottom)
+- "Want unlimited reviews + advanced features?"
+- Email input field
+- "Join Waitlist" button
+- Count: "X people already signed up" (stored in session_state)
+```
+
+### 2. PDF Upload & Processing (utils/pdf_processor.py)
+
+**Functions needed:**
+```python
+def extract_text_with_metadata(pdf_bytes):
+    """
+    Extract text from PDF with page numbers and coordinates.
+    
+    Args:
+        pdf_bytes: PDF file as bytes
+    
+    Returns:
+        {
+            'full_text': str,
+            'pages': [
+                {
+                    'page_num': int,
+                    'text': str,
+                    'blocks': [{'bbox': tuple, 'text': str}]
+                }
+            ]
+        }
+    """
+    # Use PyMuPDF to extract
+    # Preserve layout and coordinates
+    # Handle multi-column layouts
+    pass
+
+def chunk_text(text, chunk_size=500, overlap=100):
+    """
+    Split text into overlapping chunks with metadata.
+    
+    Returns:
+        [
+            {
+                'text': str,
+                'chunk_id': int,
+                'page_num': int,
+                'start_char': int,
+                'end_char': int
+            }
+        ]
+    """
+    # Use simple character-based chunking
+    # Preserve sentence boundaries where possible
+    pass
+
+def validate_pdf(pdf_bytes):
+    """
+    Check if PDF is valid and within limits.
+    
+    Checks:
+    - File size < 10MB
+    - Page count < 50
+    - Is readable (not corrupted)
+    
+    Returns: (is_valid: bool, error_message: str)
+    """
+    pass
+```
+
+### 3. Embeddings & Vector Store (utils/embeddings.py)
+
+```python
+from sentence_transformers import SentenceTransformer
+import chromadb
+
+# Cache the model to avoid reloading
+@st.cache_resource
+def load_embedding_model():
+    """Load sentence-transformers model."""
+    return SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+
+def generate_embeddings(chunks, model):
+    """
+    Generate embeddings for text chunks.
+    
+    Args:
+        chunks: List of text strings
+        model: SentenceTransformer model
+    
+    Returns:
+        List of embeddings (numpy arrays)
+    """
+    pass
+
+def create_vector_store(chunks_with_metadata, embeddings):
+    """
+    Create in-memory ChromaDB collection.
+    
+    Args:
+        chunks_with_metadata: List of chunk dicts
+        embeddings: List of embeddings
+    
+    Returns:
+        ChromaDB collection object
+    """
+    # Store in session_state for persistence during session
+    pass
+
+def retrieve_relevant_chunks(query, collection, top_k=5):
+    """
+    Retrieve most relevant chunks for a query.
+    
+    Returns:
+        [
+            {
+                'text': str,
+                'page_num': int,
+                'distance': float
+            }
+        ]
+    """
+    pass
+```
+
+### 4. Groq Integration (utils/groq_client.py)
+
+```python
+from groq import Groq
+
+def get_groq_client(api_key):
+    """Initialize Groq client with API key."""
+    return Groq(api_key=api_key)
+
+def generate_critique(
+    client,
+    retrieved_chunks,
+    query,
+    mode="full_review",
+    stream=True
+):
+    """
+    Generate critique using Groq API.
+    
+    Args:
+        client: Groq client
+        retrieved_chunks: List of relevant text chunks
+        query: User's specific question (or None for full review)
+        mode: "full_review", "methodology", "writing_quality"
+        stream: Enable streaming response
+    
+    Returns:
+        Generator yielding response chunks (if stream=True)
+        or complete response (if stream=False)
+    """
+    # Construct prompt with retrieved context
+    # Use appropriate template based on mode
+    # Handle streaming
+    pass
+
+def parse_critique_for_issues(critique_text):
+    """
+    Extract structured issues from critique.
+    
+    Returns:
+        [
+            {
+                'type': 'grammar' | 'logic' | 'methodology' | 'clarity',
+                'severity': 'high' | 'medium' | 'low',
+                'text_snippet': str,  # Problematic text
+                'suggestion': str,     # How to fix
+                'page_hint': int       # Approximate page number
+            }
+        ]
+    """
+    # Parse LLM output for structured issues
+    # Use regex or simple parsing (don't overthink)
+    pass
+```
+
+### 5. Prompt Templates (utils/prompts.py)
+
+```python
+PANELIST_REVIEW_TEMPLATE = """
+You are an experienced thesis panelist reviewing a research paper. Your role is to provide constructive, specific feedback that helps improve the research quality.
+
+CONTEXT FROM THESIS:
+{retrieved_chunks}
+
+INSTRUCTIONS:
+1. Review the provided sections critically but fairly
+2. Identify specific issues with:
+   - Research methodology and design
+   - Logical flow and argument structure
+   - Clarity of writing
+   - Alignment between problem, objectives, and methods
+3. For each issue, cite the exact text you're referring to
+4. Provide actionable suggestions for improvement
+5. Use academic tone, be direct but respectful
+
+FORMAT YOUR RESPONSE AS:
+## Major Issues
+[List critical problems]
+
+## Methodology Concerns
+[Specific methodology feedback]
+
+## Writing Quality
+[Grammar, clarity, structure issues]
+
+## Suggestions for Improvement
+[Concrete action items]
+
+Begin your review:
+"""
+
+METHODOLOGY_CHECK_TEMPLATE = """
+You are reviewing the research methodology section of a thesis. Focus specifically on research design, validity, and alignment.
+
+CONTEXT:
+{retrieved_chunks}
+
+EVALUATE:
+1. Is the research design appropriate for the research questions?
+2. Are variables clearly defined and operationalized?
+3. Is the sampling method justified?
+4. Are data collection procedures clearly described?
+5. Is the analysis method aligned with the research design?
+
+Provide specific feedback with citations from the text.
+"""
+
+WRITING_QUALITY_TEMPLATE = """
+You are a writing quality reviewer for academic papers. Focus on clarity, grammar, and structure.
+
+CONTEXT:
+{retrieved_chunks}
+
+CHECK FOR:
+1. Grammar and spelling errors
+2. Unclear or ambiguous sentences
+3. Passive voice overuse
+4. Redundant or wordy phrases
+5. Logical flow between paragraphs
+6. Citation formatting consistency
+
+For each issue, quote the problematic text and suggest a rewrite.
+"""
+
+def build_prompt(mode, retrieved_chunks, user_query=None):
+    """
+    Build final prompt based on mode and context.
+    
+    Args:
+        mode: Review mode
+        retrieved_chunks: List of relevant text chunks
+        user_query: Optional specific question
+    
+    Returns:
+        Complete prompt string
+    """
+    pass
+```
+
+### 6. PDF Annotation (utils/annotator.py)
+
+```python
+import fitz  # PyMuPDF
+
+def create_annotated_pdf(original_pdf_bytes, issues):
+    """
+    Create PDF with highlights and annotations.
+    
+    Args:
+        original_pdf_bytes: Original PDF as bytes
+        issues: List of issues from parse_critique_for_issues()
+    
+    Returns:
+        Annotated PDF as bytes
+    """
+    # Open PDF
+    # For each issue:
+    #   - Find text on page (use text_snippet)
+    #   - Add highlight annotation (yellow for low, orange for medium, red for high)
+    #   - Add popup note with suggestion
+    # Return modified PDF as bytes
+    pass
+
+def highlight_text_on_page(page, search_text, color=(1, 1, 0), opacity=0.3):
+    """
+    Highlight specific text on a PDF page.
+    
+    Args:
+        page: PyMuPDF page object
+        search_text: Text to find and highlight
+        color: RGB tuple (0-1 range)
+        opacity: Highlight transparency
+    """
+    # Use page.search_for() to find text
+    # Add highlight annotation to each instance
+    pass
+
+def add_sticky_note(page, rect, note_text, icon="Note"):
+    """
+    Add sticky note annotation to PDF.
+    
+    Args:
+        page: PyMuPDF page object
+        rect: Position (x0, y0, x1, y1)
+        note_text: Annotation content
+        icon: "Note", "Comment", "Help", etc.
+    """
+    pass
+```
+
+### 7. Main Streamlit App (app.py)
+
+**Layout structure:**
+```python
+import streamlit as st
+
+# Page config
+st.set_page_config(
+    page_title="Thesis Panelist AI",
+    page_icon="🎓",
+    layout="wide"
+)
+
+# Initialize session state
+if 'pdf_processed' not in st.session_state:
+    st.session_state.pdf_processed = False
+if 'critique_generated' not in st.session_state:
+    st.session_state.critique_generated = False
+if 'waitlist_count' not in st.session_state:
+    st.session_state.waitlist_count = 0
+
+# Sidebar
+with st.sidebar:
+    st.title("⚙️ Settings")
+    
+    # API Key input (required)
+    groq_api_key = st.text_input(
+        "Groq API Key",
+        type="password",
+        help="Get free API key at https://console.groq.com"
+    )
+    
+    if not groq_api_key:
+        st.warning("⚠️ Enter your Groq API key to continue")
+        st.info("💡 Free tier includes 14,400 requests/day")
+    
+    st.divider()
+    
+    # Upload section
+    st.subheader("📄 Upload Thesis")
+    uploaded_file = st.file_uploader(
+        "Choose PDF file",
+        type=['pdf'],
+        help="Max 10MB, under 50 pages recommended"
+    )
+    
+    if uploaded_file:
+        # Validate and process
+        pass
+    
+    st.divider()
+    
+    # Waitlist section
+    st.subheader("🚀 Join Waitlist")
+    st.write("Want unlimited reviews?")
+    waitlist_email = st.text_input("Email address")
+    if st.button("Join Waitlist"):
+        if waitlist_email:
+            st.session_state.waitlist_count += 1
+            st.success("✅ You're on the list!")
+            st.balloons()
+    
+    st.caption(f"👥 {st.session_state.waitlist_count} people signed up")
+
+# Main area
+st.title("🎓 Thesis Panelist AI")
+st.markdown("""
+### Get Expert Thesis Feedback in Minutes
+AI-powered review that catches errors before your panelist does.
+
+✅ Comprehensive critique like a real committee member  
+✅ Visual annotations showing exactly what to fix  
+✅ Free demo - no signup required
+""")
+
+# Tabs for different sections
+tab1, tab2, tab3 = st.tabs(["📝 Review", "📊 Demo Example", "ℹ️ How It Works"])
+
+with tab1:
+    if not st.session_state.pdf_processed:
+        st.info("👈 Upload your thesis PDF in the sidebar to get started")
+        
+    else:
+        # Show review interface
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.subheader("Select Review Mode")
+            mode = st.radio(
+                "Choose focus area:",
+                ["Full Panelist Review", "Methodology Check", "Writing Quality"],
+                horizontal=True
+            )
+            
+            custom_query = st.text_area(
+                "Or ask a specific question (optional):",
+                placeholder="e.g., 'Is my sampling method appropriate?'"
+            )
+            
+            if st.button("🔍 Generate Review", type="primary"):
+                # Trigger review generation
+                pass
+        
+        with col2:
+            st.subheader("Document Info")
+            # Show PDF stats
+            pass
+
+with tab2:
+    st.subheader("Example Output")
+    st.write("Here's what you'll get:")
+    # Show hardcoded example
+    pass
+
+with tab3:
+    st.subheader("How It Works")
+    st.markdown("""
+    1. **Upload** - Your thesis is processed securely (not saved)
+    2. **Analyze** - AI reads and understands your content
+    3. **Critique** - Expert-level feedback generated
+    4. **Annotate** - Visual highlights on problematic sections
+    5. **Download** - Get annotated PDF with all suggestions
+    
+    **Privacy Note:** Your document is processed in memory only.
+    Nothing is saved or stored on our servers.
+    """)
+```
+
+## Requirements.txt
+```txt
+streamlit==1.31.0
+groq==0.4.2
+chromadb==0.4.22
+sentence-transformers==2.3.1
+PyMuPDF==1.23.8
+numpy==1.24.3
+torch==2.1.2
+```
+
+## Environment Setup
+
+**Streamlit secrets (.streamlit/secrets.toml for local testing):**
+```toml
+# Not needed for MVP since users provide their own Groq API key
+# But include example structure
+```
+
+**Streamlit config (.streamlit/config.toml):**
+```toml
+[theme]
+primaryColor = "#4CAF50"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"
+
+[server]
+maxUploadSize = 10
+enableXsrfProtection = true
+```
+
+## Critical Implementation Notes
+
+### 1. Error Handling
+Every external call MUST have try-except:
+```python
+try:
+    response = groq_client.chat.completions.create(...)
+except Exception as e:
+    st.error(f"⚠️ Groq API Error: {str(e)}")
+    st.info("💡 Tip: Check your API key or try again in a moment")
+    return None
+```
+
+### 2. Performance Optimization
+- Use `@st.cache_resource` for model loading
+- Use `@st.cache_data` for PDF processing
+- Show progress bars for long operations
+- Limit PDF to 50 pages max
+
+### 3. User Experience
+- Always show what's happening (loading spinners)
+- Never let user wait without feedback
+- Clear error messages with solutions
+- Make CTA buttons prominent
+
+### 4. Rate Limiting
+Since we're on free tier:
+```python
+# Add simple cooldown
+if 'last_request_time' in st.session_state:
+    time_since_last = time.time() - st.session_state.last_request_time
+    if time_since_last < 5:  # 5 second cooldown
+        st.warning("⏳ Please wait a moment between requests")
+        return
+```
+
+## What NOT to Build (Save for Phase 2)
+
+❌ User authentication
+❌ Payment processing
+❌ Persistent storage
+❌ Multi-PDF comparison
+❌ Advanced annotation (just basic highlights)
+❌ Email notifications
+❌ Usage analytics dashboard
+❌ API endpoints
+❌ Complex prompt chaining
+❌ Fine-tuned models
+
+## Testing Checklist
+
+Before considering it "done":
+- [ ] Upload 5MB PDF - works smoothly
+- [ ] Upload 50-page PDF - completes in <2 minutes
+- [ ] Generate full review - gets meaningful critique
+- [ ] Annotations appear on correct pages
+- [ ] Download works and PDF opens correctly
+- [ ] Email capture increments counter
+- [ ] Works on mobile (responsive)
+- [ ] Handles corrupt PDF gracefully
+- [ ] API key validation works
+- [ ] Groq rate limit error handled
+
+## Deployment Instructions
+
+**For Streamlit Community Cloud:**
+1. Push code to GitHub (public repo)
+2. Go to share.streamlit.io
+3. Connect repository
+4. Deploy from main branch
+5. App gets public URL: https://your-app.streamlit.app
+
+**README.md must include:**
+```markdown
+# Thesis Panelist AI - MVP
+
+## Quick Start
+1. Visit [deployed URL]
+2. Get free Groq API key: https://console.groq.com
+3. Upload your thesis PDF
+4. Get instant expert feedback!
+
+## Local Development
+pip install -r requirements.txt
+streamlit run app.py
+
+## Note
+This is a demo. Documents are processed in memory only.
+Nothing is saved or stored.
+```
+
+## Success Metrics to Track Manually
+
+Since we have no analytics:
+- Count waitlist signups (session_state)
+- Note in code comments when users hit errors
+- Track which review modes are most used (add counter)
+
+## Final Notes
+
+**This MVP should take 6-8 hours to build** if you focus. The goal is to validate the concept, not build perfection.
+
+**Key philosophy:**
+- Works > Perfect
+- Simple > Complex  
+- Done > Polished
+
+Ship it, get feedback, iterate.
+
+Good luck! 🚀
