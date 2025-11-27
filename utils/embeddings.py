@@ -1,11 +1,10 @@
-"""
+﻿"""
 Embedding generation and vector store management.
 """
 
 import streamlit as st
 from sentence_transformers import SentenceTransformer
 import chromadb
-from chromadb.config import Settings
 from typing import List, Dict
 import numpy as np
 
@@ -38,7 +37,7 @@ def generate_embeddings(chunks: List[Dict], model: SentenceTransformer) -> np.nd
     return embeddings
 
 
-def create_vector_store(chunks_with_metadata: List[Dict], embeddings: np.ndarray) -> chromadb.Collection:
+def create_vector_store(chunks_with_metadata: List[Dict], embeddings: np.ndarray):
     """
     Create in-memory ChromaDB collection.
     
@@ -49,11 +48,8 @@ def create_vector_store(chunks_with_metadata: List[Dict], embeddings: np.ndarray
     Returns:
         ChromaDB collection object
     """
-    # Create in-memory ChromaDB client
-    client = chromadb.Client(Settings(
-        anonymized_telemetry=False,
-        is_persistent=False
-    ))
+    # Create in-memory ChromaDB client (updated for ChromaDB 0.5+)
+    client = chromadb.Client()
     
     # Create or get collection
     collection_name = "thesis_chunks"
@@ -95,7 +91,7 @@ def create_vector_store(chunks_with_metadata: List[Dict], embeddings: np.ndarray
 
 def retrieve_relevant_chunks(
     query: str,
-    collection: chromadb.Collection,
+    collection,
     model: SentenceTransformer,
     top_k: int = 5
 ) -> List[Dict]:
