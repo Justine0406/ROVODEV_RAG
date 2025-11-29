@@ -9,7 +9,10 @@ from io import BytesIO
 # Import utility modules
 from utils.pdf_processor import validate_pdf, extract_text_with_metadata, chunk_text
 from utils.embeddings import load_embedding_model, generate_embeddings, create_vector_store, retrieve_relevant_chunks
-from utils.groq_client import get_groq_client, generate_critique, parse_critique_for_issues, test_groq_connection
+from utils.groq_client import (
+    get_groq_client, generate_critique, parse_critique_for_issues,
+    parse_rewrite_suggestions, parse_section_summaries, test_groq_connection
+)
 from utils.annotator import create_annotated_pdf, add_summary_page
 from utils.prompts import build_prompt
 
@@ -146,16 +149,23 @@ def generate_review(groq_api_key, mode, custom_query=None):
             mode_queries = {
                 "Full Panelist Review": "research methodology problem statement objectives findings conclusions",
                 "Methodology Check": "research design methodology sampling data collection analysis validity",
-                "Writing Quality": "grammar writing style clarity structure flow citations"
+                "Writing Quality": "grammar writing style clarity structure flow citations",
+                "Citation & References": "citations references bibliography in-text citations reference list",
+                "Consistency Check": "terminology tense format spelling acronyms consistency",
+                "Research Alignment": "research questions objectives methodology variables analysis conclusions alignment"
             }
             retrieval_query = mode_queries.get(mode, mode_queries["Full Panelist Review"])
-            prompt_mode = mode.lower().replace(" ", "_")
-            if prompt_mode == "full_panelist_review":
-                prompt_mode = "full_review"
-            elif prompt_mode == "methodology_check":
-                prompt_mode = "methodology"
-            elif prompt_mode == "writing_quality":
-                prompt_mode = "writing_quality"
+
+            # Map mode names to prompt mode identifiers
+            mode_mapping = {
+                "Full Panelist Review": "full_review",
+                "Methodology Check": "methodology",
+                "Writing Quality": "writing_quality",
+                "Citation & References": "citation_check",
+                "Consistency Check": "consistency_check",
+                "Research Alignment": "alignment_check"
+            }
+            prompt_mode = mode_mapping.get(mode, "full_review")
         
         # Retrieve relevant chunks
         with st.spinner("🔍 Retrieving relevant sections..."):
@@ -196,22 +206,40 @@ def generate_review(groq_api_key, mode, custom_query=None):
         
         st.success("✅ Review generated successfully!")
         
-        # Parse issues for annotation
-        with st.spinner("🔍 Analyzing issues for annotation..."):
+        # Parse issues, rewrites, and section summaries for advanced annotations
+        with st.spinner("🔍 Analyzing feedback for annotations..."):
             issues = parse_critique_for_issues(full_critique)
-        
-        st.info(f"📌 Found {len(issues)} specific issues to highlight in the PDF")
-        
-        # Create annotated PDF
-        if issues:
-            with st.spinner("✏️ Creating annotated PDF..."):
+            rewrites = parse_rewrite_suggestions(full_critique)
+            section_summaries = parse_section_summaries(full_critique)
+
+        # Show annotation statistics
+        stats_cols = st.columns(4)
+        with stats_cols[0]:
+            st.metric("Issues Found", len(issues))
+        with stats_cols[1]:
+            st.metric("Rewrites", len(rewrites))
+        with stats_cols[2]:
+            st.metric("Section Reviews", len(section_summaries))
+        with stats_cols[3]:
+            critical_count = sum(1 for i in issues if i.get('severity') == 'critical')
+            st.metric("Critical Issues", critical_count, delta_color="inverse")
+
+        # Create enhanced annotated PDF
+        if issues or rewrites or section_summaries:
+            with st.spinner("✏️ Creating professional annotated PDF..."):
                 try:
                     # Get original PDF bytes
                     original_pdf = st.session_state.get('original_pdf_bytes')
                     if original_pdf:
-                        annotated_pdf = create_annotated_pdf(original_pdf, issues)
+                        annotated_pdf = create_annotated_pdf(
+                            original_pdf,
+                            issues,
+                            section_summaries=section_summaries if section_summaries else None,
+                            rewrites=rewrites if rewrites else None,
+                            include_legend=True
+                        )
                         st.session_state.annotated_pdf = annotated_pdf
-                        st.success("✅ Annotated PDF ready for download!")
+                        st.success("✅ Professional annotated PDF ready with color-coded highlights, margin comments, and rewrite suggestions!")
                 except Exception as e:
                     st.warning(f"⚠️ Could not create annotations: {str(e)}")
         
@@ -322,13 +350,26 @@ with tab1:
         
         # Show example prompt
         st.subheader("What You'll Get")
-        st.markdown("""
-        Once you upload your thesis, you can:
-        - 🔍 **Full Panelist Review** - Comprehensive analysis of your entire thesis
-        - 🧪 **Methodology Check** - Deep dive into your research design
-        - ✍️ **Writing Quality** - Grammar, clarity, and structure review
-        - 💬 **Custom Questions** - Ask specific questions about your research
-        """)
+
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            st.markdown("**📝 Basic Reviews:**")
+            st.markdown("""
+            - 🔍 **Full Panelist Review** - Comprehensive analysis
+            - 🧪 **Methodology Check** - Research design review
+            - ✍️ **Writing Quality** - Grammar & clarity check
+            """)
+
+        with col_b:
+            st.markdown("**🔬 Advanced Analysis:**")
+            st.markdown("""
+            - 📚 **Citation & References** - Validate all citations
+            - ✅ **Consistency Check** - Find inconsistencies
+            - 🎯 **Research Alignment** - Verify component alignment
+            """)
+
+        st.markdown("- 💬 **Custom Questions** - Ask specific questions about your research")
         
     else:
         # Show review interface
@@ -337,16 +378,32 @@ with tab1:
         col1, col2 = st.columns([2, 1])
         
         with col1:
-            mode = st.radio(
-                "Choose focus area:",
-                ["Full Panelist Review", "Methodology Check", "Writing Quality"],
-                horizontal=True
+            # Mode selection with tabs for better organization
+            review_type = st.selectbox(
+                "Select Review Type:",
+                ["Basic Reviews", "Advanced Analysis"],
+                index=0
             )
-            
+
+            if review_type == "Basic Reviews":
+                mode = st.radio(
+                    "Choose focus area:",
+                    ["Full Panelist Review", "Methodology Check", "Writing Quality"],
+                    horizontal=True,
+                    help="Standard review modes for quick feedback"
+                )
+            else:  # Advanced Analysis
+                mode = st.radio(
+                    "Choose advanced analysis:",
+                    ["Citation & References", "Consistency Check", "Research Alignment"],
+                    horizontal=True,
+                    help="Deep analysis of specific aspects"
+                )
+
             custom_query = st.text_area(
                 "Or ask a specific question (optional):",
                 placeholder="e.g., 'Is my sampling method appropriate?' or 'Are my conclusions well-supported?'",
-                height=100
+                height=80
             )
             
             if st.button("🔍 Generate Review", type="primary", disabled=not groq_api_key):
