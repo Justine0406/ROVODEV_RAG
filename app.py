@@ -19,7 +19,7 @@ from utils.prompts import build_prompt
 
 # Page configuration
 st.set_page_config(
-    page_title="AI Research Defense Coach",
+    page_title="Thesis Panelist AI - Professional Thesis Review",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
